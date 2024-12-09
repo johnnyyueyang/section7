@@ -1,0 +1,60 @@
+#!/usr/bin/env python3
+
+import rclpy
+from rclpy.node import Node
+from asl_tb3_lib.control import BaseController
+from asl_tb3_msgs.msg import TurtleBotControl
+
+class PerceptionController(BaseController):
+    def __init__(self):
+        super().__init__('perception_controller')
+        self.declare_parameter('active', True)
+        self._active = True  # Internal state to manage stopping
+        self.stop_start_time = 0.0  # Initialize stop start time
+
+    @property
+    def active(self) -> bool:
+        return self.get_parameter('active').get_parameter_value().bool_value
+
+    def compute_control(self) -> TurtleBotControl:
+        control_msg = TurtleBotControl()
+        current_time_sec, current_time_nsec = self.get_clock().now().seconds_nanoseconds()
+        current_time = current_time_sec + current_time_nsec * 1e-9
+
+        if self.active and self._active:
+            control_msg.angular_velocity = 0.5            self.get_logger().info('Spinning with angular velocity 0.5')
+        elif not self.active and self._active:
+            # Stop the robot
+            control_msg.angular_velocity = 0.0
+            self.get_logger().info('Stopping TurtleBot for 5 seconds.')
+            self._active = False
+            # Record the stop start time
+            self.stop_start_time = current_time
+        elif not self.active and not self._active:
+            if current_time - self.stop_start_time >= 5.0:
+                # Resume movement after 5 seconds
+                control_msg.angular_velocity = 0.5
+                self.get_logger().info('Resuming TurtleBot movement.')
+                self._active = True
+            else:
+                # Continue stopping
+                control_msg.angular_velocity = 0.0
+        else:
+            # Default behavior: Stop
+            control_msg.angular_velocity = 0.0
+
+        return control_msg
+
+def main(args=None):
+    rclpy.init(args=args)
+    controller = PerceptionController()
+    try:
+        rclpy.spin(controller)
+    except KeyboardInterrupt:
+        controller.get_logger().info('Shutting down PerceptionController node.')
+    finally:
+        controller.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
